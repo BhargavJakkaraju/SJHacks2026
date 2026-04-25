@@ -1,37 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ElementType } from "react";
-
 import ModelLoader from "@/components/viewport/ModelLoader";
 import TransformGizmo from "@/components/viewport/TransformGizmo";
+import { useWorkspaceStore } from "@/store/workspace";
 
-type SceneProps = {
-  modelUrl: string | null;
-  modelSource: string | null;
-  generationError: string | null;
-};
-
-export default function Scene({ modelUrl, modelSource, generationError }: SceneProps) {
-  const [viewerReady, setViewerReady] = useState(false);
-  const ModelViewerTag = "model-viewer" as ElementType;
-
-  useEffect(() => {
-    let isMounted = true;
-    import("@google/model-viewer")
-      .then(() => {
-        if (isMounted) {
-          setViewerReady(true);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setViewerReady(false);
-        }
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+export default function Scene() {
+  const glbUrl = useWorkspaceStore((state) => state.glbUrl);
+  const glbSource = useWorkspaceStore((state) => state.glbSource);
+  const usedFallback = useWorkspaceStore((state) => state.usedFallback);
+  const fallbackReason = useWorkspaceStore((state) => state.fallbackReason);
+  const isGenerating = useWorkspaceStore((state) => state.isGenerating);
+  const generationError = useWorkspaceStore((state) => state.generationError);
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
@@ -41,29 +20,28 @@ export default function Scene({ modelUrl, modelSource, generationError }: SceneP
         </h2>
         <TransformGizmo />
       </div>
-      <div className="mb-3 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950/40">
-        {modelUrl && viewerReady ? (
-          <ModelViewerTag
-            src={modelUrl}
-            camera-controls={true}
-            auto-rotate={true}
-            shadow-intensity="0.7"
-            exposure="1"
-            style={{ width: "100%", height: "320px", background: "transparent" }}
-          />
-        ) : (
-          <div className="flex h-60 items-center justify-center text-center text-sm text-zinc-400 md:h-72">
-            <p>
-              {modelUrl
-                ? "Loading 3D viewer..."
-                : "Generate a model from the sketchpad to preview it here."}
-              <br />
-              Meshy model generation is currently configured for no textures.
+      <ModelLoader
+        glbUrl={glbUrl}
+        isGenerating={isGenerating}
+        generationError={generationError}
+      />
+      {glbUrl && (
+        <div className="mt-2 space-y-1 text-xs text-zinc-500">
+          <p>
+            Source: <span className="text-zinc-300">{glbSource ?? "unknown"}</span>
+            {usedFallback && (
+              <span className="ml-2 rounded bg-yellow-900/40 px-1.5 py-0.5 text-yellow-200">
+                fallback (mock)
+              </span>
+            )}
+          </p>
+          {usedFallback && fallbackReason && (
+            <p className="rounded border border-yellow-900/50 bg-yellow-950/30 px-2 py-1 font-mono text-[11px] text-yellow-200">
+              Fallback reason: {fallbackReason}
             </p>
-          </div>
-        )}
-      </div>
-      <ModelLoader modelUrl={modelUrl} source={modelSource} error={generationError} />
+          )}
+        </div>
+      )}
     </section>
   );
 }

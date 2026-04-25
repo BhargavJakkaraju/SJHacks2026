@@ -36,8 +36,15 @@ MESHY_BASE_URL = os.getenv("MESHY_BASE_URL", "https://api.meshy.ai/openapi/v1").
 POLL_INTERVAL_SECONDS = float(os.getenv("SKETCH_TO_3D_POLL_INTERVAL", "3"))
 POLL_TIMEOUT_SECONDS = float(os.getenv("SKETCH_TO_3D_POLL_TIMEOUT", "300"))
 
-MOCK_GLB_PATH = Path(__file__).resolve().parent.parent / "static" / "mock_model.glb"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+GENERATED_DIR = STATIC_DIR / "generated"
+MOCK_GLB_PATH = STATIC_DIR / "mock_model.glb"
 MOCK_GLB_PUBLIC_URL = os.getenv("MOCK_GLB_PUBLIC_URL", "/static/mock_model.glb")
+
+# Whether to mirror the GLB Meshy returns into our /static dir so the frontend
+# can load it from same-origin without dealing with the upstream signed URL
+# expiring or hitting CORS. On by default; set MESHY_MIRROR_GLB=0 to disable.
+MIRROR_MESHY_GLB = os.getenv("MESHY_MIRROR_GLB", "1") not in {"0", "false", "False"}
 
 
 @dataclass
@@ -46,6 +53,7 @@ class GlbResult:
     source: str  # "meshy" | "mock" | provider name
     used_fallback: bool
     job_id: str | None = None
+    fallback_reason: str | None = None
 
 
 _DATA_URL_RE = re.compile(r"^data:image/[A-Za-z0-9.+-]+;base64,(?P<b64>.+)$", re.DOTALL)
@@ -118,37 +126,49 @@ async def callImageTo3DApi(image_path: Path) -> GlbResult:
             return await _call_meshy(image_path)
         except Exception as exc:  # noqa: BLE001
             logger.warning("callImageTo3DApi: meshy call failed (%s); using mock fallback", exc)
-            return _mock_result(reason=f"meshy_error:{exc}")
+            return _mock_result(reason=f"meshy_error: {exc}")
 
     if not MESHY_API_KEY:
         logger.warning("callImageTo3DApi: no MESHY_API_KEY set; using mock fallback")
-    else:
-        logger.warning("callImageTo3DApi: provider %r not implemented; using mock fallback", PROVIDER)
-    return _mock_result(reason="no_api_key_or_unsupported_provider")
+        return _mock_result(reason="MESHY_API_KEY not set")
+    logger.warning("callImageTo3DApi: provider %r not implemented; using mock fallback", PROVIDER)
+    return _mock_result(reason=f"unsupported_provider:{PROVIDER}")
 
 
 async def _call_meshy(image_path: Path) -> GlbResult:
     image_bytes = image_path.read_bytes()
     data_uri = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
 
-    headers = {
-        "Authorization": f"Bearer {MESHY_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    create_payload = {
+    headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
+    # Defaults tuned to produce a usable model from a single PNG sketch.
+    # See https://docs.meshy.ai/api/image-to-3d
+    ai_model = os.getenv("MESHY_AI_MODEL", "meshy-6")
+    create_payload: dict[str, object] = {
         "image_url": data_uri,
-        "enable_pbr": False,
-        "ai_model": os.getenv("MESHY_AI_MODEL", "meshy-4"),
+        "ai_model": ai_model,
+        "topology": os.getenv("MESHY_TOPOLOGY", "triangle"),
+        "target_polycount": int(os.getenv("MESHY_TARGET_POLYCOUNT", "30000")),
+        "should_remesh": True,
+        "should_texture": True,
+        "symmetry_mode": os.getenv("MESHY_SYMMETRY_MODE", "auto"),
     }
+    # enable_pbr is only valid on legacy models (meshy-3 and older); meshy-4+
+    # rejects the field with HTTP 400.
+    if ai_model not in {"meshy-4", "meshy-5", "meshy-6"}:
+        create_payload["enable_pbr"] = os.getenv("MESHY_ENABLE_PBR", "1") not in {"0", "false", "False"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        logger.info("callImageTo3DApi: POST %s/image-to-3d", MESHY_BASE_URL)
-        create_resp = await client.post(
-            f"{MESHY_BASE_URL}/image-to-3d",
-            headers=headers,
-            json=create_payload,
-        )
-        create_resp.raise_for_status()
+        create_url = f"{MESHY_BASE_URL}/image-to-3d"
+        logger.info("callImageTo3DApi: POST %s (payload keys=%s)", create_url, list(create_payload))
+        try:
+            create_resp = await client.post(create_url, headers=headers, json=create_payload)
+            create_resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # Meshy returns useful error JSON; surface it instead of just a status code.
+            raise RuntimeError(
+                f"Meshy create failed {exc.response.status_code}: {exc.response.text[:500]}"
+            ) from exc
+
         body = create_resp.json()
         job_id = body.get("result") or body.get("id") or body.get("task_id")
         if not job_id:
@@ -156,26 +176,51 @@ async def _call_meshy(image_path: Path) -> GlbResult:
         logger.info("callImageTo3DApi: meshy job %s queued; polling for completion", job_id)
 
         deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
+        last_progress: int | None = None
         while True:
             if time.monotonic() > deadline:
                 raise TimeoutError(f"Meshy job {job_id} did not finish in {POLL_TIMEOUT_SECONDS}s")
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
             poll = await client.get(
                 f"{MESHY_BASE_URL}/image-to-3d/{job_id}",
-                headers={"Authorization": f"Bearer {MESHY_API_KEY}"},
+                headers=headers,
             )
-            poll.raise_for_status()
+            try:
+                poll.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(
+                    f"Meshy poll failed {exc.response.status_code}: {exc.response.text[:500]}"
+                ) from exc
             data = poll.json()
             status = (data.get("status") or "").upper()
             progress = data.get("progress")
-            logger.info("callImageTo3DApi: meshy job %s status=%s progress=%s", job_id, status, progress)
+            if progress != last_progress:
+                logger.info("callImageTo3DApi: meshy job %s status=%s progress=%s", job_id, status, progress)
+                last_progress = progress
             if status in {"SUCCEEDED", "SUCCESS", "COMPLETED"}:
                 glb_url = (data.get("model_urls") or {}).get("glb") or data.get("model_url")
                 if not glb_url:
                     raise RuntimeError(f"Meshy job {job_id} succeeded but no GLB url in response: {data}")
+                if MIRROR_MESHY_GLB:
+                    try:
+                        local_url = await _mirror_glb(client, glb_url, str(job_id))
+                        return GlbResult(glb_url=local_url, source="meshy", used_fallback=False, job_id=str(job_id))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("callImageTo3DApi: failed to mirror GLB locally (%s); returning upstream URL", exc)
                 return GlbResult(glb_url=glb_url, source="meshy", used_fallback=False, job_id=str(job_id))
             if status in {"FAILED", "CANCELED", "EXPIRED"}:
                 raise RuntimeError(f"Meshy job {job_id} ended with status {status}: {data.get('task_error') or data}")
+
+
+async def _mirror_glb(client: httpx.AsyncClient, glb_url: str, job_id: str) -> str:
+    """Download the GLB to backend/static/generated/ and return its public URL."""
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = GENERATED_DIR / f"meshy_{job_id}.glb"
+    logger.info("callImageTo3DApi: downloading GLB for job %s to %s", job_id, out_path)
+    resp = await client.get(glb_url, timeout=120.0)
+    resp.raise_for_status()
+    out_path.write_bytes(resp.content)
+    return f"/static/generated/{out_path.name}"
 
 
 def _mock_result(reason: str) -> GlbResult:
@@ -186,7 +231,12 @@ def _mock_result(reason: str) -> GlbResult:
             "Add a sample .glb there or set MESHY_API_KEY."
         )
     logger.info("callImageTo3DApi: returning mock GLB (%s)", reason)
-    return GlbResult(glb_url=MOCK_GLB_PUBLIC_URL, source="mock", used_fallback=True)
+    return GlbResult(
+        glb_url=MOCK_GLB_PUBLIC_URL,
+        source="mock",
+        used_fallback=True,
+        fallback_reason=reason,
+    )
 
 
 def returnGlbResult(result: GlbResult) -> dict[str, object]:
@@ -202,6 +252,7 @@ def returnGlbResult(result: GlbResult) -> dict[str, object]:
         "source": result.source,
         "used_fallback": result.used_fallback,
         "job_id": result.job_id,
+        "fallback_reason": result.fallback_reason,
     }
 
 

@@ -34,6 +34,7 @@ class SketchTo3DResponse(BaseModel):
     source: str
     used_fallback: bool
     job_id: str | None = None
+    fallback_reason: str | None = None
 
 
 @router.post("/sketch-to-3d", response_model=SketchTo3DResponse)

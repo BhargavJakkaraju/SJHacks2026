@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Canvas as FabricCanvas, PencilBrush } from "fabric";
 
 import PredictionOverlay from "@/components/sketchpad/PredictionOverlay";
@@ -8,16 +8,14 @@ import PredictionOverlay from "@/components/sketchpad/PredictionOverlay";
 type CanvasProps = {
   predictionEnabled: boolean;
   clearVersion: number;
+  onReady?: (api: { getDataURL: () => string | null }) => void;
 };
 
-export type CanvasHandle = {
-  toDataURL: () => string | null;
-};
-
-const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { predictionEnabled, clearVersion },
-  ref,
-) {
+export default function Canvas({
+  predictionEnabled,
+  clearVersion,
+  onReady,
+}: CanvasProps) {
   const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -55,12 +53,20 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
 
     fabricRef.current = fabricCanvas;
 
+    onReady?.({
+      getDataURL: () =>
+        fabricRef.current?.toDataURL({
+          format: "png",
+          multiplier: 1,
+        }) ?? null,
+    });
+
     return () => {
       resizeObserver.disconnect();
       fabricCanvas.dispose();
       fabricRef.current = null;
     };
-  }, []);
+  }, [onReady]);
 
   useEffect(() => {
     const fabricCanvas = fabricRef.current;
@@ -73,24 +79,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     fabricCanvas.renderAll();
   }, [clearVersion]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      toDataURL: () => {
-        const fabricCanvas = fabricRef.current;
-        if (!fabricCanvas) {
-          return null;
-        }
-        return fabricCanvas.toDataURL({
-          format: "png",
-          quality: 1,
-          multiplier: 1,
-        });
-      },
-    }),
-    [],
-  );
-
   return (
     <div className="relative rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
       <PredictionOverlay enabled={predictionEnabled} />
@@ -102,6 +90,4 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       </div>
     </div>
   );
-});
-
-export default Canvas;
+}

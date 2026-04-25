@@ -1,32 +1,95 @@
 "use client";
 
+import { Suspense, useEffect, useMemo } from "react";
+import { Canvas } from "@react-three/fiber";
+import {
+  Bounds,
+  Center,
+  ContactShadows,
+  Environment,
+  OrbitControls,
+  useGLTF,
+} from "@react-three/drei";
+
 type ModelLoaderProps = {
-  modelUrl: string | null;
-  source: string | null;
-  error: string | null;
+  glbUrl: string | null;
+  isGenerating: boolean;
+  generationError: string | null;
 };
 
-export default function ModelLoader({ modelUrl, source, error }: ModelLoaderProps) {
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+function resolveGlbUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!API_BASE_URL) return url;
+  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
+function GltfModel({ url }: { url: string }) {
+  const gltf = useGLTF(url);
+  // Drop the loaded scene from drei's cache when the URL changes so we don't
+  // pile up GPU memory after repeated generations.
+  useEffect(() => () => useGLTF.clear(url), [url]);
+  return <primitive object={gltf.scene} />;
+}
+
+function ViewerScene({ glbUrl }: { glbUrl: string }) {
+  const resolved = useMemo(() => resolveGlbUrl(glbUrl), [glbUrl]);
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-400">
-      {error ? <p className="text-red-300">Generation failed: {error}</p> : null}
-      {modelUrl ? (
-        <>
-          <p>
-            Model ready {source ? `(${source})` : ""}:{" "}
-            <a
-              href={modelUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-300 underline"
-            >
-              Open GLB
-            </a>
-          </p>
-          <p className="mt-1 text-zinc-500">{modelUrl}</p>
-        </>
+    <Canvas
+      shadows
+      camera={{ position: [2.5, 2, 3], fov: 45 }}
+      dpr={[1, 2]}
+      gl={{ antialias: true }}
+    >
+      <color attach="background" args={["#0a0a0b"]} />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
+      <Suspense fallback={null}>
+        <Bounds fit clip observe margin={1.2}>
+          <Center>
+            <GltfModel key={resolved} url={resolved} />
+          </Center>
+        </Bounds>
+        <Environment preset="city" />
+      </Suspense>
+      <ContactShadows
+        position={[0, -0.9, 0]}
+        opacity={0.45}
+        scale={8}
+        blur={2.4}
+        far={4}
+      />
+      <OrbitControls makeDefault enableDamping />
+    </Canvas>
+  );
+}
+
+export default function ModelLoader({
+  glbUrl,
+  isGenerating,
+  generationError,
+}: ModelLoaderProps) {
+  return (
+    <div className="relative h-72 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 md:h-96">
+      {glbUrl ? (
+        <ViewerScene glbUrl={glbUrl} />
       ) : (
-        <p>Model loader: waiting for generated `GLB` URL.</p>
+        <div className="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-400">
+          {isGenerating
+            ? "Generating model..."
+            : "Draw a sketch and hit Compile & Generate to load a 3D model here."}
+        </div>
+      )}
+      {isGenerating && glbUrl && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-zinc-200">
+          Generating new model...
+        </div>
+      )}
+      {generationError && (
+        <div className="absolute bottom-2 left-2 right-2 rounded-md border border-red-700 bg-red-950/80 px-3 py-2 text-xs text-red-200">
+          {generationError}
+        </div>
       )}
     </div>
   );
