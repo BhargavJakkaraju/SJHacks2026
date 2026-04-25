@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import ChatSidebar from "@/components/chatbot/ChatSidebar";
 import Canvas from "@/components/sketchpad/Canvas";
 import Toolbar from "@/components/sketchpad/Toolbar";
@@ -13,6 +15,11 @@ export default function WorkspacePage() {
   const togglePrediction = useWorkspaceStore((state) => state.togglePrediction);
   const setGenerating = useWorkspaceStore((state) => state.setGenerating);
   const requestClearCanvas = useWorkspaceStore((state) => state.requestClearCanvas);
+  const [brushColor, setBrushColor] = useState("#000000");
+  const [activeTool, setActiveTool] = useState<"brush" | "picker" | "transform">("brush");
+  const [canvasSize, setCanvasSize] = useState<{ width?: number; height: number }>({
+    height: 260,
+  });
 
   const handleGenerate = () => {
     setGenerating(true);
@@ -36,11 +43,27 @@ export default function WorkspacePage() {
             <h2 className="text-sm font-semibold tracking-wide text-zinc-200 uppercase">
               Sketchpad
             </h2>
-            <Toolbar onClear={requestClearCanvas} />
-            <Canvas
-              predictionEnabled={predictionEnabled}
-              clearVersion={clearCanvasVersion}
-            />
+            <div className="flex w-full flex-col items-start gap-3 lg:flex-row lg:items-start">
+              <Toolbar
+                onClear={requestClearCanvas}
+                brushColor={brushColor}
+                onBrushColorChange={setBrushColor}
+                activeTool={activeTool}
+                onToolChange={setActiveTool}
+              />
+              <div className="w-full min-w-0 flex-1">
+                <Canvas
+                  predictionEnabled={predictionEnabled}
+                  clearVersion={clearCanvasVersion}
+                  brushColor={brushColor}
+                  activeTool={activeTool}
+                  onBrushColorChange={setBrushColor}
+                  canvasHeight={canvasSize.height}
+                  canvasWidth={canvasSize.width}
+                  onCanvasSizeChange={setCanvasSize}
+                />
+              </div>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

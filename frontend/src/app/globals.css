@@ -24,4 +24,11 @@ body {
   background: radial-gradient(circle at top, #18181b 0%, #09090b 45%, #030712 100%);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
 }
