@@ -9,8 +9,10 @@ import { useWorkspaceStore } from "@/store/workspace";
 export default function WorkspacePage() {
   const predictionEnabled = useWorkspaceStore((state) => state.predictionEnabled);
   const isGenerating = useWorkspaceStore((state) => state.isGenerating);
+  const clearCanvasVersion = useWorkspaceStore((state) => state.clearCanvasVersion);
   const togglePrediction = useWorkspaceStore((state) => state.togglePrediction);
   const setGenerating = useWorkspaceStore((state) => state.setGenerating);
+  const requestClearCanvas = useWorkspaceStore((state) => state.requestClearCanvas);
 
   const handleGenerate = () => {
     setGenerating(true);
@@ -34,8 +36,11 @@ export default function WorkspacePage() {
             <h2 className="text-sm font-semibold tracking-wide text-zinc-200 uppercase">
               Sketchpad
             </h2>
-            <Toolbar />
-            <Canvas predictionEnabled={predictionEnabled} />
+            <Toolbar onClear={requestClearCanvas} />
+            <Canvas
+              predictionEnabled={predictionEnabled}
+              clearVersion={clearCanvasVersion}
+            />
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
