@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Canvas as FabricCanvas, PencilBrush } from "fabric";
 
 import PredictionOverlay from "@/components/sketchpad/PredictionOverlay";
@@ -10,7 +10,14 @@ type CanvasProps = {
   clearVersion: number;
 };
 
-export default function Canvas({ predictionEnabled, clearVersion }: CanvasProps) {
+export type CanvasHandle = {
+  toDataURL: () => string | null;
+};
+
+const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
+  { predictionEnabled, clearVersion },
+  ref,
+) {
   const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -66,6 +73,24 @@ export default function Canvas({ predictionEnabled, clearVersion }: CanvasProps)
     fabricCanvas.renderAll();
   }, [clearVersion]);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      toDataURL: () => {
+        const fabricCanvas = fabricRef.current;
+        if (!fabricCanvas) {
+          return null;
+        }
+        return fabricCanvas.toDataURL({
+          format: "png",
+          quality: 1,
+          multiplier: 1,
+        });
+      },
+    }),
+    [],
+  );
+
   return (
     <div className="relative rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
       <PredictionOverlay enabled={predictionEnabled} />
@@ -77,4 +102,6 @@ export default function Canvas({ predictionEnabled, clearVersion }: CanvasProps)
       </div>
     </div>
   );
-}
+});
+
+export default Canvas;

@@ -1,22 +1,71 @@
 "use client";
 
+import { useRef } from "react";
+
 import ChatSidebar from "@/components/chatbot/ChatSidebar";
-import Canvas from "@/components/sketchpad/Canvas";
+import Canvas, { type CanvasHandle } from "@/components/sketchpad/Canvas";
 import Toolbar from "@/components/sketchpad/Toolbar";
 import Scene from "@/components/viewport/Scene";
 import { useWorkspaceStore } from "@/store/workspace";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+function toAbsoluteUrl(inputUrl: string) {
+  if (/^https?:\/\//i.test(inputUrl)) {
+    return inputUrl;
+  }
+  return `${API_BASE_URL}${inputUrl.startsWith("/") ? "" : "/"}${inputUrl}`;
+}
+
 export default function WorkspacePage() {
+  const canvasRef = useRef<CanvasHandle | null>(null);
   const predictionEnabled = useWorkspaceStore((state) => state.predictionEnabled);
   const isGenerating = useWorkspaceStore((state) => state.isGenerating);
   const clearCanvasVersion = useWorkspaceStore((state) => state.clearCanvasVersion);
+  const generatedModelUrl = useWorkspaceStore((state) => state.generatedModelUrl);
+  const modelSource = useWorkspaceStore((state) => state.modelSource);
+  const generationError = useWorkspaceStore((state) => state.generationError);
   const togglePrediction = useWorkspaceStore((state) => state.togglePrediction);
   const setGenerating = useWorkspaceStore((state) => state.setGenerating);
   const requestClearCanvas = useWorkspaceStore((state) => state.requestClearCanvas);
+  const setGeneratedModel = useWorkspaceStore((state) => state.setGeneratedModel);
+  const setGenerationError = useWorkspaceStore((state) => state.setGenerationError);
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    const sketchDataUrl = canvasRef.current?.toDataURL();
+    if (!sketchDataUrl) {
+      setGenerationError("Sketch canvas is not ready yet.");
+      return;
+    }
+
     setGenerating(true);
-    window.setTimeout(() => setGenerating(false), 1000);
+    setGenerationError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/sketch-to-3d`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sketch_data_url: sketchDataUrl,
+        }),
+      });
+      const body = (await response.json()) as {
+        glb_url?: string;
+        source?: string;
+        detail?: string;
+      };
+      if (!response.ok || !body.glb_url) {
+        throw new Error(body.detail ?? "Backend returned an unexpected response.");
+      }
+
+      setGeneratedModel({
+        url: toAbsoluteUrl(body.glb_url),
+        source: body.source ?? "unknown",
+      });
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Request failed");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
@@ -30,7 +79,11 @@ export default function WorkspacePage() {
             </p>
           </header>
 
-          <Scene />
+          <Scene
+            modelUrl={generatedModelUrl}
+            modelSource={modelSource}
+            generationError={generationError}
+          />
 
           <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
             <h2 className="text-sm font-semibold tracking-wide text-zinc-200 uppercase">
@@ -38,6 +91,7 @@ export default function WorkspacePage() {
             </h2>
             <Toolbar onClear={requestClearCanvas} />
             <Canvas
+              ref={canvasRef}
               predictionEnabled={predictionEnabled}
               clearVersion={clearCanvasVersion}
             />
@@ -57,7 +111,7 @@ export default function WorkspacePage() {
                 {predictionEnabled ? "Disable Prediction" : "Enable Prediction"}
               </button>
               <p className="text-xs text-zinc-400">
-                TODO: connect to backend generate + predict endpoints.
+                Uses `/api/sketch-to-3d` and displays returned GLB (no textures).
               </p>
             </div>
           </section>
