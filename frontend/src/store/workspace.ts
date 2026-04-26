@@ -12,6 +12,9 @@ type WorkspaceState = {
   usedFallback: boolean;
   fallbackReason: string | null;
   generationError: string | null;
+  // Canvas access for chat
+  getCanvasDataURL: (() => string | null) | null;
+  setCanvasAPI: (fn: () => string | null) => void;
   setSelectedObject: (selectedObject: string | null) => void;
   togglePrediction: () => void;
   setGenerating: (isGenerating: boolean) => void;
@@ -36,6 +39,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   usedFallback: false,
   fallbackReason: null,
   generationError: null,
+  getCanvasDataURL: null,
+  setCanvasAPI: (fn) => set({ getCanvasDataURL: fn }),
   setSelectedObject: (selectedObject) => set({ selectedObject }),
   togglePrediction: () =>
     set((state) => ({ predictionEnabled: !state.predictionEnabled })),

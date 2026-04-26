@@ -44,6 +44,7 @@ export default function WorkspacePage() {
   const requestClearCanvas = useWorkspaceStore((state) => state.requestClearCanvas);
   const setGenerationResult = useWorkspaceStore((state) => state.setGenerationResult);
   const setGenerationError = useWorkspaceStore((state) => state.setGenerationError);
+  const setCanvasAPI = useWorkspaceStore((state) => state.setCanvasAPI);
 
   const [sketchpadExpanded, setSketchpadExpanded] = useState(false);
   const getDataURLRef = useRef<(() => string | null) | null>(null);
@@ -51,8 +52,9 @@ export default function WorkspacePage() {
   const handleCanvasReady = useCallback(
     (api: { getDataURL: () => string | null }) => {
       getDataURLRef.current = api.getDataURL;
+      setCanvasAPI(api.getDataURL);
     },
-    [],
+    [setCanvasAPI],
   );
 
   const handleGenerate = useCallback(async () => {
