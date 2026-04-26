@@ -8,26 +8,23 @@ import { selectActiveTab, useWorkspaceStore } from "@/store/workspace";
 
 export default function Scene() {
   const activeTab = useWorkspaceStore(selectActiveTab);
-  const combineActive = useWorkspaceStore((state) => state.combineActive);
-  const combinedGlbUrl = useWorkspaceStore((state) => state.combinedGlbUrl);
-  const tabs = useWorkspaceStore((state) => state.tabs);
+  const isCombined = activeTab.kind === "combined";
 
-  const displayedGlbUrl = combineActive ? combinedGlbUrl : activeTab.glbUrl;
-  const isGenerating = combineActive ? false : activeTab.isGenerating;
-  const generationError = combineActive ? null : activeTab.generationError;
+  const displayedGlbUrl = activeTab.glbUrl;
+  const isGenerating = activeTab.isGenerating;
+  const generationError = activeTab.generationError;
 
-  const headerLabel = combineActive
-    ? "Combined View"
+  const headerLabel = isCombined
+    ? `3D Environment · ${activeTab.label}`
     : `3D Environment · ${activeTab.label}`;
 
-  const exportFilename = combineActive
-    ? "combined.glb"
-    : `${activeTab.label.toLowerCase().replace(/\s+/g, "-")}.glb`;
+  const exportFilename = `${activeTab.label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}.glb`;
 
   const canExport = !!displayedGlbUrl && !isGenerating;
 
-  // Force a download via the anchor `download` attribute. Same-origin asset
-  // (served from /public) so the browser will respect the filename.
   const handleExport = useCallback(() => {
     if (!displayedGlbUrl) return;
     const link = document.createElement("a");
@@ -39,11 +36,11 @@ export default function Scene() {
   }, [displayedGlbUrl, exportFilename]);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
+    <section className="flex h-full flex-col rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2
           className={`text-sm font-semibold tracking-[0.2em] uppercase ${
-            combineActive ? "text-violet-200" : "text-white/80"
+            isCombined ? "text-violet-200" : "text-white/80"
           }`}
         >
           {headerLabel}
@@ -67,24 +64,26 @@ export default function Scene() {
         </div>
       </div>
 
-      {combineActive && (
+      {isCombined && (
         <div className="mb-3 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100">
-          <span className="font-semibold">Showing combined model:</span>{" "}
-          {tabs.map((tab, idx) => (
-            <span key={tab.id}>
+          <span className="font-semibold">Combined model:</span>{" "}
+          {(activeTab.sourcePreviews ?? []).map((preview, idx) => (
+            <span key={preview.tabId}>
               {idx > 0 && <span className="px-1 text-violet-300">+</span>}
-              <span>{tab.label}</span>
+              <span>{preview.label}</span>
             </span>
           ))}
           .
         </div>
       )}
 
-      <ModelLoader
-        glbUrl={displayedGlbUrl}
-        isGenerating={isGenerating}
-        generationError={generationError}
-      />
+      <div className="flex-1">
+        <ModelLoader
+          glbUrl={displayedGlbUrl}
+          isGenerating={isGenerating}
+          generationError={generationError}
+        />
+      </div>
     </section>
   );
 }

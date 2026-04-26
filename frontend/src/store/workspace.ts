@@ -2,13 +2,22 @@
 
 import { create } from "zustand";
 
-// Hardcoded demo tab configuration. Each tab maps a label to a GLB asset.
 export type WorkspaceTab = {
   id: string;
   label: string;
-  // Static, hardcoded asset that "Compile & Generate" reveals for this tab.
+  // Drawing tabs let users sketch and generate; combined tabs are read-only
+  // composites of two or more drawing tabs.
+  kind: "drawing" | "combined";
+  // Static, hardcoded asset that "Compile & Generate" reveals for this tab
+  // (drawing tabs only).
   predefinedGlbUrl: string;
   predefinedSource: string;
+  // Source drawing tabs that produced this combined tab (combined tabs only).
+  sourceTabIds?: string[];
+  // Snapshots of source drawings shown side-by-side in a combined tab.
+  sourcePreviews?: { tabId: string; label: string; dataUrl: string | null }[];
+  // Combined tabs can be closed by the user; drawing tabs cannot for the demo.
+  isClosable: boolean;
   // Runtime per-tab state
   glbUrl: string | null;
   glbSource: string | null;
@@ -16,8 +25,10 @@ export type WorkspaceTab = {
   fallbackReason: string | null;
   isGenerating: boolean;
   generationError: string | null;
-  // Fabric.js canvas serialization
+  // Fabric.js canvas serialization (drawing tabs only)
   canvasState: object | null;
+  // PNG snapshot of the canvas (drawing tabs only) used for combined previews
+  previewDataUrl: string | null;
 };
 
 export const COMBINED_GLB_URL = "/models/santa-basketball.glb";
@@ -26,8 +37,10 @@ const INITIAL_TABS: WorkspaceTab[] = [
   {
     id: "tab-1",
     label: "Tab 1",
+    kind: "drawing",
     predefinedGlbUrl: "/models/basketball.glb",
     predefinedSource: "tab-1",
+    isClosable: false,
     glbUrl: null,
     glbSource: null,
     usedFallback: false,
@@ -35,12 +48,15 @@ const INITIAL_TABS: WorkspaceTab[] = [
     isGenerating: false,
     generationError: null,
     canvasState: null,
+    previewDataUrl: null,
   },
   {
     id: "tab-2",
     label: "Tab 2",
+    kind: "drawing",
     predefinedGlbUrl: "/models/santa-hat.glb",
     predefinedSource: "tab-2",
+    isClosable: false,
     glbUrl: null,
     glbSource: null,
     usedFallback: false,
@@ -48,8 +64,17 @@ const INITIAL_TABS: WorkspaceTab[] = [
     isGenerating: false,
     generationError: null,
     canvasState: null,
+    previewDataUrl: null,
   },
 ];
+
+type CombinedTabInput = {
+  label: string;
+  glbUrl: string;
+  source: string;
+  sourceTabIds: string[];
+  sourcePreviews: { tabId: string; label: string; dataUrl: string | null }[];
+};
 
 type WorkspaceState = {
   selectedObject: string | null;
@@ -58,9 +83,6 @@ type WorkspaceState = {
 
   tabs: WorkspaceTab[];
   activeTabId: string;
-
-  // Combined-view state (3D environment swaps to combined model)
-  combineActive: boolean;
   combinedGlbUrl: string;
 
   setSelectedObject: (selectedObject: string | null) => void;
@@ -81,11 +103,16 @@ type WorkspaceState = {
     },
   ) => void;
   setTabGenerationError: (id: string, message: string | null) => void;
-  saveTabCanvasState: (id: string, canvasState: object | null) => void;
+  saveTabCanvasState: (
+    id: string,
+    canvasState: object | null,
+    previewDataUrl: string | null,
+  ) => void;
   resetTabGeneration: (id: string) => void;
 
-  // Combine
-  setCombineActive: (active: boolean) => void;
+  // Combined tab management
+  addCombinedTab: (input: CombinedTabInput) => string;
+  closeTab: (id: string) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -95,8 +122,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   tabs: INITIAL_TABS,
   activeTabId: INITIAL_TABS[0].id,
-
-  combineActive: false,
   combinedGlbUrl: COMBINED_GLB_URL,
 
   setSelectedObject: (selectedObject) => set({ selectedObject }),
@@ -141,10 +166,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       ),
     })),
 
-  saveTabCanvasState: (id, canvasState) =>
+  saveTabCanvasState: (id, canvasState, previewDataUrl) =>
     set((state) => ({
       tabs: state.tabs.map((tab) =>
-        tab.id === id ? { ...tab, canvasState } : tab,
+        tab.id === id
+          ? {
+              ...tab,
+              canvasState,
+              previewDataUrl: previewDataUrl ?? tab.previewDataUrl,
+            }
+          : tab,
       ),
     })),
 
@@ -164,10 +195,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       ),
     })),
 
-  setCombineActive: (combineActive) => set({ combineActive }),
+  addCombinedTab: ({ label, glbUrl, source, sourceTabIds, sourcePreviews }) => {
+    const id = `tab-combined-${Date.now()}`;
+    const newTab: WorkspaceTab = {
+      id,
+      label,
+      kind: "combined",
+      predefinedGlbUrl: glbUrl,
+      predefinedSource: source,
+      sourceTabIds,
+      sourcePreviews,
+      isClosable: true,
+      glbUrl,
+      glbSource: source,
+      usedFallback: false,
+      fallbackReason: null,
+      isGenerating: false,
+      generationError: null,
+      canvasState: null,
+      previewDataUrl: null,
+    };
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: id,
+    }));
+    return id;
+  },
+
+  closeTab: (id) =>
+    set((state) => {
+      const target = state.tabs.find((tab) => tab.id === id);
+      if (!target || !target.isClosable) return {};
+      const remaining = state.tabs.filter((tab) => tab.id !== id);
+      let nextActiveId = state.activeTabId;
+      if (state.activeTabId === id) {
+        nextActiveId = remaining[0]?.id ?? state.activeTabId;
+      }
+      return { tabs: remaining, activeTabId: nextActiveId };
+    }),
 }));
 
-// Selector helper for the currently active tab.
 export function selectActiveTab(state: WorkspaceState): WorkspaceTab {
   return (
     state.tabs.find((tab) => tab.id === state.activeTabId) ?? state.tabs[0]

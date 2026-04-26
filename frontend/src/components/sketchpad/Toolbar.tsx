@@ -100,14 +100,14 @@ export default function Toolbar({
           type="button"
           onClick={onSelectionToggle}
           title="Select, move & resize objects"
-          className={`flex h-7 items-center gap-1 rounded-full border-2 px-2.5 text-xs font-medium transition ${
+          aria-label="Select"
+          className={`flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs transition ${
             selectionMode
               ? "border-violet-500 bg-violet-600 text-white"
               : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10"
           }`}
         >
-          <span>↖</span>
-          <span>Select</span>
+          <span aria-hidden>↖</span>
         </button>
       </div>
 

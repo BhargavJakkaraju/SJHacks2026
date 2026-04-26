@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import ChatSidebar from "@/components/chatbot/ChatSidebar";
 import Canvas from "@/components/sketchpad/Canvas";
+import CombinedSketchPreview from "@/components/sketchpad/CombinedSketchPreview";
 import PredictionPanel from "@/components/sketchpad/PredictionPanel";
 import Toolbar from "@/components/sketchpad/Toolbar";
 import Scene from "@/components/viewport/Scene";
-import TabBar from "@/components/workspace/TabBar";
-import { selectActiveTab, useWorkspaceStore } from "@/store/workspace";
+import FileExplorer from "@/components/workspace/FileExplorer";
+import {
+  COMBINED_GLB_URL,
+  selectActiveTab,
+  useWorkspaceStore,
+} from "@/store/workspace";
 
 const PREDICTION_WARMUP_MS = 10000;
 const COMBINE_WARMUP_MS = 10000;
@@ -32,7 +37,6 @@ type CanvasApi = {
 };
 
 export default function WorkspacePage() {
-  // Global workspace state
   const tabs = useWorkspaceStore((state) => state.tabs);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore(selectActiveTab);
@@ -42,7 +46,6 @@ export default function WorkspacePage() {
   const clearCanvasVersion = useWorkspaceStore(
     (state) => state.clearCanvasVersion,
   );
-  const combineActive = useWorkspaceStore((state) => state.combineActive);
 
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setTabGenerating = useWorkspaceStore((state) => state.setTabGenerating);
@@ -61,10 +64,9 @@ export default function WorkspacePage() {
   const setPredictionEnabled = useWorkspaceStore(
     (state) => state.setPredictionEnabled,
   );
-  const setCombineActive = useWorkspaceStore((state) => state.setCombineActive);
+  const addCombinedTab = useWorkspaceStore((state) => state.addCombinedTab);
+  const closeTab = useWorkspaceStore((state) => state.closeTab);
 
-  // Local UI state
-  const [sketchpadExpanded, setSketchpadExpanded] = useState(false);
   const [brushColor, setBrushColor] = useState("#ffffff");
   const [eraserMode, setEraserMode] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -77,9 +79,13 @@ export default function WorkspacePage() {
   const canvasApiRef = useRef<CanvasApi | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
 
-  // Track which tab the canvas currently shows so we know which tab to save
-  // into when the user switches.
-  const displayedTabIdRef = useRef<string>(activeTabId);
+  const isOnDrawingTab = activeTab.kind === "drawing";
+
+  // Track which drawing tab the canvas currently shows so we know which tab to
+  // save into when the user switches.
+  const displayedTabIdRef = useRef<string>(
+    isOnDrawingTab ? activeTabId : tabs.find((t) => t.kind === "drawing")?.id ?? activeTabId,
+  );
 
   useEffect(() => {
     return () => {
@@ -88,21 +94,26 @@ export default function WorkspacePage() {
     };
   }, []);
 
-  // Whenever the active tab changes (or the canvas first becomes ready), save
-  // the previous tab's drawing into the store and load the new tab's saved
-  // drawing into the (single) canvas instance.
+  // Persist the currently-displayed drawing tab's state + preview, then load
+  // the new tab's saved drawing.
   useEffect(() => {
     if (!canvasReady) return;
     const api = canvasApiRef.current;
     if (!api) return;
+
     const previousTabId = displayedTabIdRef.current;
-    if (previousTabId !== activeTabId) {
+    const previousTab = tabs.find((t) => t.id === previousTabId);
+
+    if (previousTabId !== activeTabId && previousTab?.kind === "drawing") {
       const previousState = api.getJSON();
-      saveTabCanvasState(previousTabId, previousState);
-      displayedTabIdRef.current = activeTabId;
+      const previousPreview = api.getDataURL();
+      saveTabCanvasState(previousTabId, previousState, previousPreview);
     }
-    const incoming = tabs.find((tab) => tab.id === activeTabId);
-    void api.loadJSON(incoming?.canvasState ?? null);
+
+    if (activeTab.kind === "drawing") {
+      displayedTabIdRef.current = activeTabId;
+      void api.loadJSON(activeTab.canvasState ?? null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, canvasReady]);
 
@@ -113,12 +124,17 @@ export default function WorkspacePage() {
 
   const handleSelectTab = useCallback(
     (id: string) => {
-      if (id === activeTabId && !combineActive) return;
-      // Selecting a tab also exits combined view.
-      if (combineActive) setCombineActive(false);
+      if (id === activeTabId) return;
       setActiveTab(id);
     },
-    [activeTabId, combineActive, setActiveTab, setCombineActive],
+    [activeTabId, setActiveTab],
+  );
+
+  const handleCloseTab = useCallback(
+    (id: string) => {
+      closeTab(id);
+    },
+    [closeTab],
   );
 
   const handleColorChange = useCallback((color: string) => {
@@ -156,24 +172,22 @@ export default function WorkspacePage() {
     }, PREDICTION_WARMUP_MS);
   }, [predictionEnabled, predictionLoading, setPredictionEnabled]);
 
-  // Hardcoded demo: skip API, reveal tab's predefined Meshy GLB after 3s.
+  // Hardcoded demo: skip API, reveal active tab's predefined GLB after 3s.
   const handleGenerate = useCallback(async () => {
-    const targetTabId = activeTabId;
-    const target = tabs.find((tab) => tab.id === targetTabId);
-    if (!target) return;
+    if (activeTab.kind !== "drawing") return;
+    const targetTabId = activeTab.id;
     setTabGenerationError(targetTabId, null);
     setTabGenerating(targetTabId, true);
     await new Promise((resolve) => setTimeout(resolve, GENERATE_DURATION_MS));
     setTabGenerationResult(targetTabId, {
-      glbUrl: target.predefinedGlbUrl,
-      source: target.predefinedSource,
+      glbUrl: activeTab.predefinedGlbUrl,
+      source: activeTab.predefinedSource,
       usedFallback: false,
       fallbackReason: null,
     });
     setTabGenerating(targetTabId, false);
   }, [
-    activeTabId,
-    tabs,
+    activeTab,
     setTabGenerating,
     setTabGenerationError,
     setTabGenerationResult,
@@ -194,65 +208,113 @@ export default function WorkspacePage() {
     setPendingApplied(false);
   }, []);
 
+  // Snapshot every drawing tab so the combined preview can show all sources.
+  // The currently-active drawing tab is captured live; others are read from
+  // their stored previewDataUrl.
+  const captureSourcePreviews = useCallback(() => {
+    return tabs
+      .filter((t) => t.kind === "drawing")
+      .map((tab) => {
+        if (tab.id === activeTabId) {
+          const liveDataUrl = canvasApiRef.current?.getDataURL() ?? null;
+          return {
+            tabId: tab.id,
+            label: tab.label,
+            dataUrl: liveDataUrl ?? tab.previewDataUrl,
+          };
+        }
+        return {
+          tabId: tab.id,
+          label: tab.label,
+          dataUrl: tab.previewDataUrl,
+        };
+      });
+  }, [tabs, activeTabId]);
+
+  const drawingTabCount = useMemo(
+    () => tabs.filter((t) => t.kind === "drawing").length,
+    [tabs],
+  );
+
   const handleCombineClick = useCallback(() => {
-    if (isCombining || combineActive) return;
+    if (isCombining) return;
+    if (drawingTabCount < 2) return;
+
+    // Snapshot the active drawing tab into its store entry first so the
+    // composited tab can read accurate source previews.
+    if (activeTab.kind === "drawing") {
+      const json = canvasApiRef.current?.getJSON() ?? null;
+      const preview = canvasApiRef.current?.getDataURL() ?? null;
+      saveTabCanvasState(activeTabId, json, preview);
+    }
+
     setIsCombining(true);
     combineTimerRef.current = setTimeout(() => {
-      setCombineActive(true);
+      const previews = captureSourcePreviews();
+      const sourceLabels = previews.map((p) => p.label).join(" + ");
+      addCombinedTab({
+        label: `Combined: ${sourceLabels}`,
+        glbUrl: COMBINED_GLB_URL,
+        source: "combined",
+        sourceTabIds: previews.map((p) => p.tabId),
+        sourcePreviews: previews,
+      });
       setIsCombining(false);
       combineTimerRef.current = null;
     }, COMBINE_WARMUP_MS);
-  }, [isCombining, combineActive, setCombineActive]);
+  }, [
+    isCombining,
+    drawingTabCount,
+    activeTab,
+    activeTabId,
+    saveTabCanvasState,
+    captureSourcePreviews,
+    addCombinedTab,
+  ]);
 
-  const handleExitCombine = useCallback(() => {
-    if (combineTimerRef.current) {
-      clearTimeout(combineTimerRef.current);
-      combineTimerRef.current = null;
-    }
-    setIsCombining(false);
-    setCombineActive(false);
-  }, [setCombineActive]);
-
-  const sketchpadPanel = (
-    <section
-      className={
-        sketchpadExpanded
-          ? "flex h-full flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/80 p-4 shadow-[0_0_60px_-30px_rgba(59,130,246,0.45)] backdrop-blur"
-          : "flex flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur"
-      }
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-sm font-semibold tracking-[0.2em] text-white/80 uppercase">
-            Sketchpad
-          </h2>
-          <span className="text-xs text-white/40">{activeTab.label}</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setSketchpadExpanded((v) => !v)}
-          className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/10"
+  const sketchpadHeader = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-sm font-semibold tracking-[0.2em] text-white/80 uppercase">
+          {activeTab.kind === "combined" ? "Combined Preview" : "Sketchpad"}
+        </h2>
+        <span
+          className={`text-xs ${
+            activeTab.kind === "combined"
+              ? "text-violet-200/80"
+              : "text-white/40"
+          }`}
         >
-          {sketchpadExpanded ? "Collapse" : "Expand"}
-        </button>
+          {activeTab.label}
+        </span>
       </div>
-      <Toolbar
-        onClear={requestClearCanvas}
-        activeColor={brushColor}
-        onColorChange={handleColorChange}
-        eraserMode={eraserMode}
-        onEraserToggle={handleEraserToggle}
-        presetColors={PRESET_COLORS}
-        selectionMode={selectionMode}
-        onSelectionToggle={handleSelectionToggle}
-      />
+    </div>
+  );
 
-      <div className="relative">
+  // Drawing-tab body: toolbar + canvas + prediction panel + action buttons.
+  // The canvas itself stays mounted on combined tabs (just hidden) so the
+  // single-instance Fabric setup keeps working — we swap the visible content.
+  const sketchpadBody = (
+    <>
+      {isOnDrawingTab && (
+        <Toolbar
+          onClear={requestClearCanvas}
+          activeColor={brushColor}
+          onColorChange={handleColorChange}
+          eraserMode={eraserMode}
+          onEraserToggle={handleEraserToggle}
+          presetColors={PRESET_COLORS}
+          selectionMode={selectionMode}
+          onSelectionToggle={handleSelectionToggle}
+        />
+      )}
+
+      <div className={`relative flex-1 ${isOnDrawingTab ? "" : "hidden"}`}>
         <Canvas
           predictionEnabled={predictionEnabled}
           clearVersion={clearCanvasVersion}
           onReady={handleCanvasReady}
-          fillHeight={sketchpadExpanded}
+          fillHeight
           brushColor={brushColor}
           eraserMode={eraserMode}
           selectionMode={selectionMode}
@@ -277,82 +339,102 @@ export default function WorkspacePage() {
         )}
       </div>
 
-      {predictionEnabled && <PredictionPanel onApply={handleApplyVariation} />}
+      {!isOnDrawingTab && (
+        <div className="flex flex-1 flex-col">
+          <CombinedSketchPreview tab={activeTab} />
+        </div>
+      )}
 
-      <ChatSidebar />
+      {isOnDrawingTab && predictionEnabled && (
+        <PredictionPanel onApply={handleApplyVariation} />
+      )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={activeTab.isGenerating}
-          className="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_18px_3px_rgba(59,130,246,0.55)] transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {activeTab.isGenerating
-            ? `Generating ${activeTab.label}...`
-            : `Compile & Generate`}
-        </button>
-        <button
-          type="button"
-          onClick={handlePredictionToggle}
-          className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${
-            predictionLoading
-              ? "border-blue-400/40 bg-blue-500/10 text-blue-200"
+      {isOnDrawingTab && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={activeTab.isGenerating}
+            className="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_18px_3px_rgba(59,130,246,0.55)] transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {activeTab.isGenerating
+              ? `Generating ${activeTab.label}...`
+              : `Compile & Generate`}
+          </button>
+          <button
+            type="button"
+            onClick={handlePredictionToggle}
+            className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${
+              predictionLoading
+                ? "border-blue-400/40 bg-blue-500/10 text-blue-200"
+                : predictionEnabled
+                  ? "border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
+                  : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+            }`}
+          >
+            {predictionLoading && (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300/40 border-t-blue-300" />
+            )}
+            {predictionLoading
+              ? "Warming up prediction..."
               : predictionEnabled
-                ? "border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
-                : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
-          }`}
-        >
-          {predictionLoading && (
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300/40 border-t-blue-300" />
-          )}
-          {predictionLoading
-            ? "Warming up prediction..."
-            : predictionEnabled
-              ? "Disable Prediction"
-              : "Enable Prediction"}
-        </button>
-      </div>
-    </section>
+                ? "Disable Prediction"
+                : "Enable Prediction"}
+          </button>
+        </div>
+      )}
+    </>
   );
 
   return (
-    <main className="min-h-screen bg-black px-4 py-5 text-zinc-100 md:px-6">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-        <header className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_60px_-30px_rgba(59,130,246,0.45)] backdrop-blur">
-          <h1 className="text-lg font-semibold text-white">Bloom Workspace</h1>
-          <p className="mt-1 text-sm text-white/60">
-            Switch tabs to work on multiple drawings, then click{" "}
-            <span className="text-violet-300">Combine</span> to merge their 3D
-            models into a single scene.
-          </p>
-        </header>
+    <main className="flex min-h-screen flex-col bg-black p-3 text-zinc-100 md:p-4">
+      <header className="mb-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_60px_-30px_rgba(59,130,246,0.45)] backdrop-blur">
+        <h1 className="text-lg font-semibold text-white">Bloom Workspace</h1>
+        <p className="mt-1 text-sm text-white/60">
+          An IDE for artists — open a file on the left, sketch in the center,
+          and chat with context on the right.
+        </p>
+      </header>
 
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={handleSelectTab}
-          combineActive={combineActive}
-          isCombining={isCombining}
-          onCombineClick={handleCombineClick}
-          onExitCombine={handleExitCombine}
-        />
+      <div className="grid flex-1 gap-3 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+        {/* Left: file explorer */}
+        <div className="min-h-0">
+          <FileExplorer
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onCombineClick={handleCombineClick}
+            isCombining={isCombining}
+            canCombine={drawingTabCount >= 2}
+          />
+        </div>
 
-        {!sketchpadExpanded && (
-          <div className="grid gap-4 lg:grid-cols-2">
+        {/* Center: sketchpad + 3D environment side-by-side */}
+        <div className="grid min-h-0 gap-3 xl:grid-cols-2">
+          <section className="flex min-h-[640px] flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
+            {sketchpadHeader}
+            {sketchpadBody}
+          </section>
+          <div className="flex min-h-[640px] flex-col">
             <Scene />
-            {sketchpadPanel}
-          </div>
-        )}
-      </div>
-
-      {sketchpadExpanded && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black p-4 md:p-6">
-          <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
-            {sketchpadPanel}
           </div>
         </div>
-      )}
+
+        {/* Right: context chat */}
+        <div className="min-h-0">
+          <aside className="flex h-full flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-semibold tracking-[0.25em] text-white/50 uppercase">
+                Context
+              </span>
+            </div>
+            <div className="flex-1">
+              <ChatSidebar />
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

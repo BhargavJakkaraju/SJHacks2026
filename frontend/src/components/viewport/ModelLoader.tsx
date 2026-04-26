@@ -112,7 +112,7 @@ export default function ModelLoader({
   generationError,
 }: ModelLoaderProps) {
   return (
-    <div className="relative h-72 overflow-hidden rounded-lg border border-white/10 bg-zinc-950 md:h-96">
+    <div className="relative h-full min-h-[18rem] overflow-hidden rounded-lg border border-white/10 bg-zinc-950">
       {glbUrl ? (
         <ViewerErrorBoundary key={glbUrl}>
           <ViewerScene glbUrl={glbUrl} />
