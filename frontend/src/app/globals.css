@@ -8,8 +8,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-margarine);
+  --font-mono: var(--font-margarine);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,5 +23,5 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at top, #18181b 0%, #09090b 45%, #030712 100%);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-margarine), Arial, sans-serif;
 }
