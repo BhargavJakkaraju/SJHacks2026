@@ -8,6 +8,31 @@ import Toolbar from "@/components/sketchpad/Toolbar";
 import Scene from "@/components/viewport/Scene";
 import { useWorkspaceStore } from "@/store/workspace";
 
+const PETAL_COUNT = 8;
+
+function FlowerIcon() {
+  return (
+    <svg viewBox="-36 -36 72 72" width="24" height="24">
+      {Array.from({ length: PETAL_COUNT }).map((_, i) => {
+        const angle = (i / PETAL_COUNT) * 360;
+        return (
+          <ellipse
+            key={i}
+            cx="0"
+            cy="-17"
+            rx="6"
+            ry="13"
+            fill="white"
+            opacity="0.92"
+            transform={`rotate(${angle})`}
+          />
+        );
+      })}
+      <circle cx="0" cy="0" r="7.5" fill="white" />
+    </svg>
+  );
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export default function WorkspacePage() {
@@ -74,18 +99,18 @@ export default function WorkspacePage() {
     <section
       className={
         sketchpadExpanded
-          ? "flex h-full flex-col gap-3 rounded-2xl border border-sky-200 bg-white/85 p-4 shadow-lg backdrop-blur"
-          : "flex flex-col gap-3 rounded-2xl border border-sky-200 bg-white/80 p-4 shadow-md backdrop-blur"
+          ? "flex h-full flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg backdrop-blur-md"
+          : "flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-md backdrop-blur-md"
       }
     >
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-sky-900 uppercase">
+        <h2 className="text-sm font-semibold tracking-wide text-white/70 uppercase">
           Sketchpad
         </h2>
         <button
           type="button"
           onClick={() => setSketchpadExpanded((v) => !v)}
-          className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-50"
+          className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
         >
           {sketchpadExpanded ? "Collapse" : "Expand"}
         </button>
@@ -104,14 +129,15 @@ export default function WorkspacePage() {
           type="button"
           onClick={handleGenerate}
           disabled={isGenerating}
-          className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ boxShadow: "0 0 12px 2px rgba(59,130,246,0.5)" }}
         >
           {isGenerating ? "Generating..." : "Compile & Generate"}
         </button>
         <button
           type="button"
           onClick={togglePrediction}
-          className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm text-sky-800 transition hover:bg-sky-50"
+          className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
         >
           {predictionEnabled ? "Disable Prediction" : "Enable Prediction"}
         </button>
@@ -120,13 +146,15 @@ export default function WorkspacePage() {
   );
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-sky-200 via-sky-100 to-sky-300 px-4 py-5 text-sky-950 md:px-6">
+    <main className="min-h-screen bg-black px-4 py-5 text-white md:px-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-        <header className="rounded-2xl border border-sky-200 bg-white/70 p-4 shadow-md backdrop-blur">
-          <h1 className="text-lg font-semibold text-sky-950">ArtForge Workspace</h1>
-          <p className="mt-1 text-sm text-sky-800">
-            Sketch on the right, compile, and refine generated assets in the 3D
-            panel on the left.
+        <header className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-md backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <FlowerIcon />
+            <h1 className="text-lg font-semibold text-white">Bloom</h1>
+          </div>
+          <p className="mt-1 text-sm text-white/50">
+            Sketch on the right, compile, and refine generated assets in the 3D panel on the left.
           </p>
         </header>
 
@@ -141,7 +169,7 @@ export default function WorkspacePage() {
       </div>
 
       {sketchpadExpanded && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-sky-200 via-sky-100 to-sky-300 p-4 md:p-6">
+        <div className="fixed inset-0 z-50 flex flex-col bg-black p-4 md:p-6">
           <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
             {sketchpadPanel}
           </div>
