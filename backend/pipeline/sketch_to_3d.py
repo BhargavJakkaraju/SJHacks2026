@@ -125,8 +125,9 @@ async def callImageTo3DApi(image_path: Path) -> GlbResult:
         try:
             return await _call_meshy(image_path)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("callImageTo3DApi: meshy call failed (%s); using mock fallback", exc)
-            return _mock_result(reason=f"meshy_error: {exc}")
+            reason = str(exc).strip() or type(exc).__name__
+            logger.warning("callImageTo3DApi: meshy call failed (%s); using mock fallback", reason)
+            return _mock_result(reason=f"meshy_error: {reason}")
 
     if not MESHY_API_KEY:
         logger.warning("callImageTo3DApi: no MESHY_API_KEY set; using mock fallback")
@@ -157,12 +158,19 @@ async def _call_meshy(image_path: Path) -> GlbResult:
     if ai_model not in {"meshy-4", "meshy-5", "meshy-6"}:
         create_payload["enable_pbr"] = os.getenv("MESHY_ENABLE_PBR", "1") not in {"0", "false", "False"}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Ignore host-level proxy env vars (HTTP_PROXY/HTTPS_PROXY/etc) so local
+    # proxy tooling cannot intercept Meshy calls and cause false 403s.
+    # Meshy can take >60s to accept queued create requests under load, so keep
+    # a larger read timeout to avoid spurious fallback on the initial POST.
+    timeout = httpx.Timeout(connect=10.0, read=180.0, write=60.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
         create_url = f"{MESHY_BASE_URL}/image-to-3d"
         logger.info("callImageTo3DApi: POST %s (payload keys=%s)", create_url, list(create_payload))
         try:
             create_resp = await client.post(create_url, headers=headers, json=create_payload)
             create_resp.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise RuntimeError("Meshy create timed out while waiting for response") from exc
         except httpx.HTTPStatusError as exc:
             # Meshy returns useful error JSON; surface it instead of just a status code.
             raise RuntimeError(
