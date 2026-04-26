@@ -17,6 +17,8 @@ import {
   useWorkspaceStore,
 } from "@/store/workspace";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
 const PREDICTION_WARMUP_MS = 10000;
 const COMBINE_WARMUP_MS = 20000;
 const GENERATE_DURATION_MS = 20000;
@@ -178,23 +180,57 @@ export default function WorkspacePage() {
     }, PREDICTION_WARMUP_MS);
   }, [predictionEnabled, predictionLoading, setPredictionEnabled]);
 
-  // Hardcoded demo: skip API, reveal active tab's predefined GLB after 3s.
-  // Tabs without a preloaded GLB simply leave the 3D viewport empty.
   const handleGenerate = useCallback(async () => {
     if (activeTab.kind !== "drawing") return;
     const targetTabId = activeTab.id;
     setTabGenerationError(targetTabId, null);
     setTabGenerating(targetTabId, true);
-    await new Promise((resolve) => setTimeout(resolve, GENERATE_DURATION_MS));
-    if (activeTab.predefinedGlbUrl) {
-      setTabGenerationResult(targetTabId, {
-        glbUrl: activeTab.predefinedGlbUrl,
-        source: activeTab.predefinedSource,
-        usedFallback: false,
-        fallbackReason: null,
-      });
+
+    if (activeTab.id === "tab-3") {
+      // Tab 3: real Meshy API call
+      try {
+        const dataUrl = canvasApiRef.current?.getDataURL();
+        if (!dataUrl) throw new Error("Canvas not ready — try again.");
+        const res = await fetch(`${API_BASE_URL}/api/sketch-to-3d`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sketch_data_url: dataUrl }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          throw new Error(`Backend ${res.status}: ${detail.slice(0, 240)}`);
+        }
+        const body = (await res.json()) as {
+          glb_url: string;
+          source: string;
+          used_fallback: boolean;
+          fallback_reason: string | null;
+        };
+        setTabGenerationResult(targetTabId, {
+          glbUrl: body.glb_url,
+          source: body.source,
+          usedFallback: body.used_fallback,
+          fallbackReason: body.fallback_reason,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setTabGenerationError(targetTabId, message);
+      } finally {
+        setTabGenerating(targetTabId, false);
+      }
+    } else {
+      // Hardcoded demo: Tab 1 and Tab 2 reveal their predefined GLB after a delay
+      await new Promise((resolve) => setTimeout(resolve, GENERATE_DURATION_MS));
+      if (activeTab.predefinedGlbUrl) {
+        setTabGenerationResult(targetTabId, {
+          glbUrl: activeTab.predefinedGlbUrl,
+          source: activeTab.predefinedSource,
+          usedFallback: false,
+          fallbackReason: null,
+        });
+      }
+      setTabGenerating(targetTabId, false);
     }
-    setTabGenerating(targetTabId, false);
   }, [
     activeTab,
     setTabGenerating,
