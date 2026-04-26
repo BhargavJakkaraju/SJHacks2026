@@ -8,8 +8,12 @@ type Message = {
   text: string;
 };
 
-const HARDCODED_REPLY =
+const FIRST_REPLY =
   "Got it! Looks like you're drawing a basketball — I'll use that as context for generation.";
+const SECOND_REPLY =
+  "Perfect — I'll use that you're trying to create a santa hat as context.";
+const THIRD_REPLY =
+  "Awesome, I understand you want to combine both images so the santa hat sits on top of the basketball.";
 
 const REPLY_DELAY_MS = 10000;
 
@@ -61,6 +65,7 @@ export default function ChatSidebar() {
   const [interimText, setInterimText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [userMessageCount, setUserMessageCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nextId = useRef(1);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -153,15 +158,23 @@ export default function ChatSidebar() {
     if (!text || isTyping) return;
     if (isListening) stopListening();
     const userMsg: Message = { id: nextId.current++, from: "user", text };
+    const nextUserMessageCount = userMessageCount + 1;
     setMessages((prev) => [...prev, userMsg]);
+    setUserMessageCount(nextUserMessageCount);
     setInputValue("");
     setInterimText("");
     setIsTyping(true);
 
     setTimeout(() => {
+      const replyText =
+        nextUserMessageCount === 2
+          ? SECOND_REPLY
+          : nextUserMessageCount === 3
+            ? THIRD_REPLY
+            : FIRST_REPLY;
       setMessages((prev) => [
         ...prev,
-        { id: nextId.current++, from: "bot", text: HARDCODED_REPLY },
+        { id: nextId.current++, from: "bot", text: replyText },
       ]);
       setIsTyping(false);
     }, REPLY_DELAY_MS);
