@@ -25,3 +25,14 @@ body {
   color: var(--foreground);
   font-family: var(--font-margarine), Arial, sans-serif;
 }
+
+/* Keep scrolling functional but hide visible scrollbars. */
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

@@ -9,8 +9,9 @@ export type WorkspaceTab = {
   // composites of two or more drawing tabs.
   kind: "drawing" | "combined";
   // Static, hardcoded asset that "Compile & Generate" reveals for this tab
-  // (drawing tabs only).
-  predefinedGlbUrl: string;
+  // (drawing tabs only). May be null for blank tabs that should leave the 3D
+  // viewport empty after generation.
+  predefinedGlbUrl: string | null;
   predefinedSource: string;
   // Source drawing tabs that produced this combined tab (combined tabs only).
   sourceTabIds?: string[];
@@ -56,6 +57,22 @@ const INITIAL_TABS: WorkspaceTab[] = [
     kind: "drawing",
     predefinedGlbUrl: "/models/santa-hat.glb",
     predefinedSource: "tab-2",
+    isClosable: false,
+    glbUrl: null,
+    glbSource: null,
+    usedFallback: false,
+    fallbackReason: null,
+    isGenerating: false,
+    generationError: null,
+    canvasState: null,
+    previewDataUrl: null,
+  },
+  {
+    id: "tab-3",
+    label: "Tab 3",
+    kind: "drawing",
+    predefinedGlbUrl: null,
+    predefinedSource: "tab-3",
     isClosable: false,
     glbUrl: null,
     glbSource: null,
@@ -113,6 +130,7 @@ type WorkspaceState = {
   // Combined tab management
   addCombinedTab: (input: CombinedTabInput) => string;
   closeTab: (id: string) => void;
+  renameTab: (id: string, label: string) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -233,6 +251,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       }
       return { tabs: remaining, activeTabId: nextActiveId };
     }),
+
+  renameTab: (id, label) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === id ? { ...tab, label: trimmed } : tab,
+      ),
+    }));
+  },
 }));
 
 export function selectActiveTab(state: WorkspaceState): WorkspaceTab {

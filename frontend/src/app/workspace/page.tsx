@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import BloomLogo from "@/components/branding/BloomLogo";
 import ChatSidebar from "@/components/chatbot/ChatSidebar";
 import Canvas from "@/components/sketchpad/Canvas";
 import CombinedSketchPreview from "@/components/sketchpad/CombinedSketchPreview";
 import PredictionPanel from "@/components/sketchpad/PredictionPanel";
 import Toolbar from "@/components/sketchpad/Toolbar";
 import Scene from "@/components/viewport/Scene";
+import CombineModal from "@/components/workspace/CombineModal";
 import FileExplorer from "@/components/workspace/FileExplorer";
 import {
   COMBINED_GLB_URL,
@@ -16,8 +18,8 @@ import {
 } from "@/store/workspace";
 
 const PREDICTION_WARMUP_MS = 10000;
-const COMBINE_WARMUP_MS = 10000;
-const GENERATE_DURATION_MS = 3000;
+const COMBINE_WARMUP_MS = 20000;
+const GENERATE_DURATION_MS = 20000;
 
 const PRESET_COLORS = [
   "#ffffff",
@@ -66,6 +68,7 @@ export default function WorkspacePage() {
   );
   const addCombinedTab = useWorkspaceStore((state) => state.addCombinedTab);
   const closeTab = useWorkspaceStore((state) => state.closeTab);
+  const renameTab = useWorkspaceStore((state) => state.renameTab);
 
   const [brushColor, setBrushColor] = useState("#ffffff");
   const [eraserMode, setEraserMode] = useState(false);
@@ -73,6 +76,9 @@ export default function WorkspacePage() {
   const [pendingApplied, setPendingApplied] = useState(false);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [isCombining, setIsCombining] = useState(false);
+  const [filesCollapsed, setFilesCollapsed] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [combineModalOpen, setCombineModalOpen] = useState(false);
 
   const predictionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const combineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -173,18 +179,21 @@ export default function WorkspacePage() {
   }, [predictionEnabled, predictionLoading, setPredictionEnabled]);
 
   // Hardcoded demo: skip API, reveal active tab's predefined GLB after 3s.
+  // Tabs without a preloaded GLB simply leave the 3D viewport empty.
   const handleGenerate = useCallback(async () => {
     if (activeTab.kind !== "drawing") return;
     const targetTabId = activeTab.id;
     setTabGenerationError(targetTabId, null);
     setTabGenerating(targetTabId, true);
     await new Promise((resolve) => setTimeout(resolve, GENERATE_DURATION_MS));
-    setTabGenerationResult(targetTabId, {
-      glbUrl: activeTab.predefinedGlbUrl,
-      source: activeTab.predefinedSource,
-      usedFallback: false,
-      fallbackReason: null,
-    });
+    if (activeTab.predefinedGlbUrl) {
+      setTabGenerationResult(targetTabId, {
+        glbUrl: activeTab.predefinedGlbUrl,
+        source: activeTab.predefinedSource,
+        usedFallback: false,
+        fallbackReason: null,
+      });
+    }
     setTabGenerating(targetTabId, false);
   }, [
     activeTab,
@@ -236,41 +245,53 @@ export default function WorkspacePage() {
     [tabs],
   );
 
-  const handleCombineClick = useCallback(() => {
-    if (isCombining) return;
-    if (drawingTabCount < 2) return;
+  const handleCombineClick = useCallback(
+    (selectedIds: string[]) => {
+      if (isCombining) return;
+      if (selectedIds.length < 2) return;
 
-    // Snapshot the active drawing tab into its store entry first so the
-    // composited tab can read accurate source previews.
-    if (activeTab.kind === "drawing") {
-      const json = canvasApiRef.current?.getJSON() ?? null;
-      const preview = canvasApiRef.current?.getDataURL() ?? null;
-      saveTabCanvasState(activeTabId, json, preview);
-    }
+      // Snapshot the active drawing tab into its store entry first so the
+      // composited tab can read accurate source previews.
+      if (activeTab.kind === "drawing") {
+        const json = canvasApiRef.current?.getJSON() ?? null;
+        const preview = canvasApiRef.current?.getDataURL() ?? null;
+        saveTabCanvasState(activeTabId, json, preview);
+      }
 
-    setIsCombining(true);
-    combineTimerRef.current = setTimeout(() => {
-      const previews = captureSourcePreviews();
-      const sourceLabels = previews.map((p) => p.label).join(" + ");
-      addCombinedTab({
-        label: `Combined: ${sourceLabels}`,
-        glbUrl: COMBINED_GLB_URL,
-        source: "combined",
-        sourceTabIds: previews.map((p) => p.tabId),
-        sourcePreviews: previews,
-      });
-      setIsCombining(false);
-      combineTimerRef.current = null;
-    }, COMBINE_WARMUP_MS);
-  }, [
-    isCombining,
-    drawingTabCount,
-    activeTab,
-    activeTabId,
-    saveTabCanvasState,
-    captureSourcePreviews,
-    addCombinedTab,
-  ]);
+      setIsCombining(true);
+      combineTimerRef.current = setTimeout(() => {
+        const previews = captureSourcePreviews().filter((p) =>
+          selectedIds.includes(p.tabId),
+        );
+        const sourceLabels = previews.map((p) => p.label).join(" + ");
+        addCombinedTab({
+          label: `Combined: ${sourceLabels}`,
+          glbUrl: COMBINED_GLB_URL,
+          source: "combined",
+          sourceTabIds: previews.map((p) => p.tabId),
+          sourcePreviews: previews,
+        });
+        setIsCombining(false);
+        combineTimerRef.current = null;
+      }, COMBINE_WARMUP_MS);
+    },
+    [
+      isCombining,
+      activeTab,
+      activeTabId,
+      saveTabCanvasState,
+      captureSourcePreviews,
+      addCombinedTab,
+    ],
+  );
+
+  const gridColumns = useMemo(() => {
+    const parts: string[] = [];
+    if (!filesCollapsed) parts.push("220px");
+    parts.push("minmax(0,1fr)");
+    if (!chatCollapsed) parts.push("300px");
+    return parts.join(" ");
+  }, [filesCollapsed, chatCollapsed]);
 
   const sketchpadHeader = (
     <div className="flex items-center justify-between gap-3">
@@ -388,27 +409,63 @@ export default function WorkspacePage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-black p-3 text-zinc-100 md:p-4">
-      <header className="mb-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-4 shadow-[0_0_60px_-30px_rgba(59,130,246,0.45)] backdrop-blur">
-        <h1 className="text-lg font-semibold text-white">Bloom Workspace</h1>
-        <p className="mt-1 text-sm text-white/60">
-          An IDE for artists — open a file on the left, sketch in the center,
-          and chat with context on the right.
-        </p>
+      <header className="mb-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-2.5 shadow-[0_0_60px_-30px_rgba(59,130,246,0.45)] backdrop-blur">
+        <div className="flex items-center gap-3">
+          <BloomLogo size={28} />
+          <h1 className="text-lg font-semibold text-white">Bloom Workspace</h1>
+          <span className="hidden text-sm text-white/60 sm:inline">·</span>
+          <p className="hidden text-sm text-white/60 sm:block">
+            An IDE for artists and 3D modeling
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFilesCollapsed((v) => !v)}
+            aria-pressed={!filesCollapsed}
+            title={filesCollapsed ? "Show files" : "Hide files"}
+            className={`flex items-center rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+              filesCollapsed
+                ? "border-white/10 bg-zinc-900 text-white/60 hover:bg-zinc-800 hover:text-white/80"
+                : "border-white/15 bg-zinc-800 text-white hover:bg-zinc-700"
+            }`}
+          >
+            Files
+          </button>
+          <button
+            type="button"
+            onClick={() => setChatCollapsed((v) => !v)}
+            aria-pressed={!chatCollapsed}
+            title={chatCollapsed ? "Show chat" : "Hide chat"}
+            className={`flex items-center rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+              chatCollapsed
+                ? "border-white/10 bg-zinc-900 text-white/60 hover:bg-zinc-800 hover:text-white/80"
+                : "border-white/15 bg-zinc-800 text-white hover:bg-zinc-700"
+            }`}
+          >
+            Chat
+          </button>
+        </div>
       </header>
 
-      <div className="grid flex-1 gap-3 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-        {/* Left: file explorer */}
-        <div className="min-h-0">
-          <FileExplorer
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onSelectTab={handleSelectTab}
-            onCloseTab={handleCloseTab}
-            onCombineClick={handleCombineClick}
-            isCombining={isCombining}
-            canCombine={drawingTabCount >= 2}
-          />
-        </div>
+      <div
+        className="grid flex-1 gap-3"
+        style={{ gridTemplateColumns: gridColumns }}
+      >
+        {!filesCollapsed && (
+          <div className="min-h-0">
+            <FileExplorer
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={handleSelectTab}
+              onCloseTab={handleCloseTab}
+              onCombineClick={() => setCombineModalOpen(true)}
+              isCombining={isCombining}
+              canCombine={drawingTabCount >= 2}
+              onRenameTab={renameTab}
+            />
+          </div>
+        )}
 
         {/* Center: sketchpad + 3D environment side-by-side */}
         <div className="grid min-h-0 gap-3 xl:grid-cols-2">
@@ -421,20 +478,33 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Right: context chat */}
-        <div className="min-h-0">
-          <aside className="flex h-full flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] font-semibold tracking-[0.25em] text-white/50 uppercase">
-                Context
-              </span>
-            </div>
-            <div className="flex-1">
-              <ChatSidebar />
-            </div>
-          </aside>
-        </div>
+        {!chatCollapsed && (
+          <div className="min-h-0">
+            <aside className="flex h-full flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-[0_0_50px_-30px_rgba(59,130,246,0.4)] backdrop-blur">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-semibold tracking-[0.25em] text-white/50 uppercase">
+                  Context
+                </span>
+              </div>
+              <div className="flex-1">
+                <ChatSidebar />
+              </div>
+            </aside>
+          </div>
+        )}
       </div>
+
+      {combineModalOpen && (
+        <CombineModal
+          tabs={tabs.filter((t) => t.kind === "drawing")}
+          defaultSelectedIds={["tab-1", "tab-2"]}
+          onCancel={() => setCombineModalOpen(false)}
+          onConfirm={(selectedIds) => {
+            setCombineModalOpen(false);
+            handleCombineClick(selectedIds);
+          }}
+        />
+      )}
     </main>
   );
 }
