@@ -101,8 +101,8 @@ export default function Canvas({
     <div
       className={
         fillHeight
-          ? "relative flex h-full flex-col rounded-xl border border-sky-200 bg-white p-4"
-          : "relative rounded-xl border border-sky-200 bg-white p-4"
+          ? "relative flex h-full flex-col rounded-xl border border-white/10 bg-white p-4"
+          : "relative rounded-xl border border-white/10 bg-white p-4"
       }
     >
       <PredictionOverlay enabled={predictionEnabled} />
@@ -110,8 +110,8 @@ export default function Canvas({
         ref={wrapperRef}
         className={
           fillHeight
-            ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-sky-200 bg-white"
-            : "overflow-hidden rounded-lg border border-sky-200 bg-white"
+            ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-white/10 bg-white"
+            : "overflow-hidden rounded-lg border border-white/10 bg-white"
         }
       >
         <canvas ref={canvasElementRef} />
