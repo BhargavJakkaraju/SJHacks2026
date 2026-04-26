@@ -13,9 +13,9 @@ export default function Scene() {
   const generationError = useWorkspaceStore((state) => state.generationError);
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <section className="rounded-2xl border border-sky-200 bg-white/80 p-4 shadow-md backdrop-blur">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-zinc-200 uppercase">
+        <h2 className="text-sm font-semibold tracking-wide text-sky-900 uppercase">
           3D Environment
         </h2>
         <TransformGizmo />
@@ -26,17 +26,17 @@ export default function Scene() {
         generationError={generationError}
       />
       {glbUrl && (
-        <div className="mt-2 space-y-1 text-xs text-zinc-500">
+        <div className="mt-2 space-y-1 text-xs text-sky-700">
           <p>
-            Source: <span className="text-zinc-300">{glbSource ?? "unknown"}</span>
+            Source: <span className="text-sky-900">{glbSource ?? "unknown"}</span>
             {usedFallback && (
-              <span className="ml-2 rounded bg-yellow-900/40 px-1.5 py-0.5 text-yellow-200">
+              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">
                 fallback (mock)
               </span>
             )}
           </p>
           {usedFallback && fallbackReason && (
-            <p className="rounded border border-yellow-900/50 bg-yellow-950/30 px-2 py-1 font-mono text-[11px] text-yellow-200">
+            <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-mono text-[11px] text-amber-800">
               Fallback reason: {fallbackReason}
             </p>
           )}

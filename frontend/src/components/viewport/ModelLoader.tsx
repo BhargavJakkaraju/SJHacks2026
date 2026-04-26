@@ -42,7 +42,7 @@ function ViewerScene({ glbUrl }: { glbUrl: string }) {
       dpr={[1, 2]}
       gl={{ antialias: true }}
     >
-      <color attach="background" args={["#0a0a0b"]} />
+      <color attach="background" args={["#e0f2fe"]} />
       <ambientLight intensity={0.4} />
       <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
       <Suspense fallback={null}>
@@ -71,23 +71,23 @@ export default function ModelLoader({
   generationError,
 }: ModelLoaderProps) {
   return (
-    <div className="relative h-72 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 md:h-96">
+    <div className="relative h-72 overflow-hidden rounded-lg border border-sky-200 bg-sky-50 md:h-96">
       {glbUrl ? (
         <ViewerScene glbUrl={glbUrl} />
       ) : (
-        <div className="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-400">
+        <div className="flex h-full items-center justify-center px-4 text-center text-sm text-sky-700">
           {isGenerating
             ? "Generating model..."
             : "Draw a sketch and hit Compile & Generate to load a 3D model here."}
         </div>
       )}
       {isGenerating && glbUrl && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-zinc-200">
+        <div className="absolute inset-0 flex items-center justify-center bg-sky-100/70 text-sm text-sky-900">
           Generating new model...
         </div>
       )}
       {generationError && (
-        <div className="absolute bottom-2 left-2 right-2 rounded-md border border-red-700 bg-red-950/80 px-3 py-2 text-xs text-red-200">
+        <div className="absolute bottom-2 left-2 right-2 rounded-md border border-red-300 bg-red-50/90 px-3 py-2 text-xs text-red-800">
           {generationError}
         </div>
       )}

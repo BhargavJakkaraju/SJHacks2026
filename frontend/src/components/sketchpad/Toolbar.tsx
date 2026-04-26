@@ -6,14 +6,14 @@ type ToolbarProps = {
 
 export default function Toolbar({ onClear }: ToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+      <div className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-900">
         Brush: Black Ink
       </div>
       <button
         type="button"
         onClick={onClear}
-        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+        className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100"
       >
         Clear Canvas
       </button>

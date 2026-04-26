@@ -9,16 +9,32 @@ type CanvasProps = {
   predictionEnabled: boolean;
   clearVersion: number;
   onReady?: (api: { getDataURL: () => string | null }) => void;
+  fillHeight?: boolean;
 };
 
 export default function Canvas({
   predictionEnabled,
   clearVersion,
   onReady,
+  fillHeight = false,
 }: CanvasProps) {
   const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
+  const fillHeightRef = useRef(fillHeight);
+
+  useEffect(() => {
+    fillHeightRef.current = fillHeight;
+    const fabricCanvas = fabricRef.current;
+    const wrapper = wrapperRef.current;
+    if (!fabricCanvas || !wrapper) {
+      return;
+    }
+    const width = wrapper.clientWidth;
+    const height = fillHeight ? wrapper.clientHeight || 260 : 260;
+    fabricCanvas.setDimensions({ width, height });
+    fabricCanvas.renderAll();
+  }, [fillHeight]);
 
   useEffect(() => {
     const element = canvasElementRef.current;
@@ -42,7 +58,9 @@ export default function Canvas({
 
     const resizeCanvas = () => {
       const width = wrapper.clientWidth;
-      const height = 260;
+      const height = fillHeightRef.current
+        ? wrapper.clientHeight || 260
+        : 260;
       fabricCanvas.setDimensions({ width, height });
       fabricCanvas.renderAll();
     };
@@ -80,11 +98,21 @@ export default function Canvas({
   }, [clearVersion]);
 
   return (
-    <div className="relative rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+    <div
+      className={
+        fillHeight
+          ? "relative flex h-full flex-col rounded-xl border border-sky-200 bg-white p-4"
+          : "relative rounded-xl border border-sky-200 bg-white p-4"
+      }
+    >
       <PredictionOverlay enabled={predictionEnabled} />
       <div
         ref={wrapperRef}
-        className="overflow-hidden rounded-lg border border-zinc-700 bg-white"
+        className={
+          fillHeight
+            ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-sky-200 bg-white"
+            : "overflow-hidden rounded-lg border border-sky-200 bg-white"
+        }
       >
         <canvas ref={canvasElementRef} />
       </div>

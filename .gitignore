@@ -22,6 +22,9 @@ frontend/.next/
 frontend/out/
 frontend/.turbo/
 
+# Generated runtime artifacts
+backend/static/generated/
+
 # OS / editor
 .DS_Store
 .idea/
