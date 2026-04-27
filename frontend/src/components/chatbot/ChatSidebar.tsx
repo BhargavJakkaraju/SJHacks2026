@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Message = {
   id: number;
@@ -70,10 +70,10 @@ export default function ChatSidebar() {
   const nextId = useRef(1);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  const speechSupported = useMemo(
-    () => getSpeechRecognitionCtor() !== null,
-    [],
-  );
+  const [speechSupported, setSpeechSupported] = useState(false);
+  useEffect(() => {
+    setSpeechSupported(getSpeechRecognitionCtor() !== null);
+  }, []);
 
   const scrollToBottom = () => {
     if (scrollRef.current) {
