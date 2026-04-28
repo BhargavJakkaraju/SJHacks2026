@@ -6,6 +6,8 @@ Built with accessibility in mind, Bloom removes the need for complex 3D tools—
 
 Devpost: [View our project on Devpost](https://devpost.com/software/boom-ytjp4a)
 
+1st Place: **Best 3D/CGI Tool**, 1st Place: Track 1 - **Cybersecurity**
+
 ### Core Capabilities
 
 - **Sketch → 3D** — draw on a 2D canvas and generate `.glb` assets in one step  
