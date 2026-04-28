@@ -1,8 +1,10 @@
-# Bloom (SJHacks2026)
+# 🏆 Bloom (SJHacks2026)
 
 Bloom is a web-based creative IDE that turns **sketches, voice, and simple descriptions into 3D models**.
 
 Built with accessibility in mind, Bloom removes the need for complex 3D tools—users can draw, speak, and describe their ideas, while the app handles the heavy lifting and guides them through the process.
+
+Devpost: [View our project on Devpost](https://devpost.com/software/boom-ytjp4a)
 
 ### Core Capabilities
 
@@ -19,7 +21,6 @@ Built with accessibility in mind, Bloom removes the need for complex 3D tools—
   <img src="https://github.com/user-attachments/assets/f84444df-a506-4eb8-8735-de1bd150c712" width="700" />
 </p>
 
-Devpost: [View our project on Devpost](https://devpost.com/software/boom-ytjp4a)
 
 ## Project Structure
 
@@ -46,12 +47,6 @@ SJHacks2026/
 - 3D model viewport with transform gizmo and generation metadata
 - Fallback behavior to local mock model if Meshy is unavailable
 - Context-aware AI chat that can inspect current sketch data URL
-
-## Prerequisites
-
-- Node.js 20+
-- npm
-- Python 3.11+ (3.13 also works in this repo)
 
 ## Quick Start
 
@@ -107,18 +102,6 @@ From repo root:
 
 ```bash
 uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
-
-Health check:
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-Expected response:
-
-```json
-{"status":"ok"}
 ```
 
 ### 4) Run frontend
